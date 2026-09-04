@@ -28,8 +28,8 @@
   "use strict";
 
   // ─── Constantes (iguais à API original) ────────────────────────────────────
-  var BASE_APP = "https://futemais.link/app2/";
-  var BASE_IMGS = "https://futemais.link";
+  var BASE_APP = "https://apk.futemais.eu/app2/";
+  var BASE_IMGS = "https://apk.futemais.eu";
   var TIMEOUT_MS = 15000;
   var MATCHES_TTL = 5 * 60 * 1000; // 5 min
   var CHANNELS_TTL = 2 * 60 * 1000; // 2 min
@@ -331,30 +331,94 @@
   }
 
   // ─── API pública (a mesma cara das rotas /api/jogos do app) ────────────────
+  // O futemais vive trocando de endereço por região (no Brasil o
+  // apk.futemais.eu cai no espelho futemais.link, e a raiz do espelho é uma
+  // página SEM jogos — por isso a TV mostrava "nenhum jogo" sem erro).
+  // Se a listagem vier vazia ou falhar, o módulo troca de host sozinho: o
+  // espelho serve a MESMA página de jogos, com os links absolutos dele.
+  var BASES_LISTA = [
+    "https://apk.futemais.eu/app2/",
+    "https://futemais.link/app2/"
+  ];
+  var hostLista = 0; // índice da base que funcionou por último
+
+  function basesNaOrdem() {
+    var ordem = [BASES_LISTA[hostLista]];
+    for (var i = 0; i < BASES_LISTA.length; i++) {
+      if (i !== hostLista) ordem.push(BASES_LISTA[i]);
+    }
+    return ordem;
+  }
+
+  function tentarBases(bases, i) {
+    if (i >= bases.length) return Promise.resolve([]);
+    return httpGet(bases[i]).then(function (html) {
+      var jogos = parseJogos(html);
+      if (jogos.length > 0) {
+        for (var j = 0; j < BASES_LISTA.length; j++) {
+          if (bases[i] === BASES_LISTA[j]) { hostLista = j; break; }
+        }
+        return jogos;
+      }
+      // respondeu, mas veio sem jogos (página de enfeite/redirect regional)
+      return tentarBases(bases, i + 1);
+    }, function (erro) {
+      if (i + 1 < bases.length) return tentarBases(bases, i + 1);
+      throw erro; // último host falhou de verdade — deixa o erro subir
+    });
+  }
+
   function listarJogos(forcar) {
     if (!forcar && cacheJogos.data && Date.now() - cacheJogos.at < MATCHES_TTL) {
       return Promise.resolve(cacheJogos.data);
     }
-    return httpGet(BASE_APP).then(function (html) {
-      var jogos = parseJogos(html);
-      if (!jogos.length) {
-        console.warn("[scraper] parseJogos deu 0 resultados. html.length=" + (html ? html.length : 0) +
-          " | trecho: " + String(html).slice(0, 300));
+    return tentarBases(basesNaOrdem(), 0).then(function (jogos) {
+      if (jogos.length > 0) {
+        cacheJogos = { at: Date.now(), data: jogos };
+      } else {
+        // dia sem jogo de verdade: não cacheia, pra re-testar no próximo ciclo
+        cacheJogos = { at: 0, data: null };
       }
-      cacheJogos = { at: Date.now(), data: jogos };
       return jogos;
     });
   }
 
-  /** Preenche jogo.channels e devolve os canais (cache de 2 min) */
+  /** Preenche jogo.channels e devolve os canais (cache de 2 min).
+   *  links2.futemais.eu e temporariofutemais.com servem a MESMA página de
+   *  canais (cada listagem aponta pra um deles): se um vier vazio ou falhar,
+   *  tenta o outro uma vez. 0 canais também é estado válido ("ainda não tem"). */
+  function hostAlternativoDeCanais(url) {
+    if (url.indexOf("links2.futemais.eu") >= 0) {
+      return url.replace("links2.futemais.eu", "temporariofutemais.com");
+    }
+    if (url.indexOf("temporariofutemais.com") >= 0) {
+      return url.replace("temporariofutemais.com", "links2.futemais.eu");
+    }
+    return "";
+  }
+
   function canaisDoJogo(jogo, forcar) {
     var c = cacheCanais[jogo.match_id];
     if (!forcar && c && Date.now() - c.at < CHANNELS_TTL) {
       jogo.channels = c.data;
       return Promise.resolve(c.data);
     }
-    return httpGet(jogo.detail_url).then(function (html) {
-      var canais = parseCanais(html);
+    function buscar(url) {
+      return httpGet(url).then(function (html) {
+        return parseCanais(html);
+      });
+    }
+    var alt = hostAlternativoDeCanais(jogo.detail_url);
+    return buscar(jogo.detail_url).then(function (canais) {
+      if (canais.length > 0 || !alt) return canais;
+      // veio vazia: pode ser página errada do redirect regional — tenta o espelho
+      return buscar(alt).then(function (altCanais) {
+        return altCanais.length > 0 ? altCanais : canais;
+      });
+    }, function (erro1) {
+      if (!alt) throw erro1;
+      return buscar(alt); // erro de rede/HTTP no host principal → espelho
+    }).then(function (canais) {
       cacheCanais[jogo.match_id] = { at: Date.now(), data: canais };
       jogo.channels = canais;
       return canais;
@@ -366,6 +430,8 @@
     canaisDoJogo: canaisDoJogo,
     resolverHls: resolverHls,
     /** pra depurar no console: "direto" (TV), "ponte" (PC via app) ou índice */
-    transporte: function () { return transporte; }
+    transporte: function () { return transporte; },
+    /** qual host da listagem funcionou por último (0 = apk, 1 = espelho) */
+    hostLista: function () { return hostLista; }
   };
 })(window);

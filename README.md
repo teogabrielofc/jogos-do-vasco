@@ -79,8 +79,30 @@ no controle.
 | OK | Abre os canais do jogo; de novo, assiste; no vídeo, pausa/despausa |
 | VOLTAR | Volta: vídeo → canais → home; na home, sai do app |
 
+## Ver no PC (pré-visualização)
+
+O módulo roda na TV SEM CORS (o TizenBrew tem `<access origin="*">`, o Tizen
+ignora a política de mesma origem). No navegador do PC isso não vale — mas o
+módulo v2.1+ se vira sozinho: se o navegador bloquear a leitura do futemais,
+ele refaz a chamada pela **ponte `/api/pipe`** do app Jogos do Vasco.
+
+- **Jeito fácil**: abra `<link do app>/tizenbrew/index.html` no navegador
+  (o app serve o módulo pronto em `public/tizenbrew/`). Tudo funciona:
+  jogos, canais e até o vídeo ao vivo.
+- **Abrir o `index.html` solto (duplo clique / file://)**: a ponte não existe
+  nessa origem; o módulo tenta proxies públicos best-effort — se todos
+  estiverem fora, aparece "Não consegui buscar os jogos". Na TV isso nunca
+  acontece (caminho direto).
+- Depois de editar qualquer arquivo do módulo, rode `scripts/sync_module.sh`
+  pra espelhar em `public/tizenbrew/` e re-empacotar o `download/`.
+
 ## Problemas comuns
 
+- **"Nenhum jogo listado hoje" na TV, mas tem jogo no celular** → o site do
+  futemais redireciona o Brasil pro espelho `futemais.link`. A partir da
+  **v2.2.0** o módulo troca de host sozinho (apk → espelho) e também troca o
+  host dos canais. Se aparecer assim mesmo, aperte OK pra tentar de novo e
+  confira se a TV está com a versão 2.2.0 do módulo (publicada no GitHub).
 - **"Não consegui buscar os jogos agora"** → internet da TV caiu. OK tenta
   de novo. Se persistir, a fonte (site do futemais) pode estar fora do ar —
   espera um pouco.

@@ -815,15 +815,10 @@
         renderRodape("home");
         renderHome();
       }
-      if (!lista || !lista.length) {
-        console.warn("[jogos-do-vasco] 0 jogos no parse. transporte=" + window.FutemaisAPI.transporte());
-      }
       anunciarPrimeiraVez(S.jogos);
-    }).catch(function (erro) {
-      var msg = erro && erro.message ? erro.message : "erro desconhecido";
-      console.error("[jogos-do-vasco] falha ao buscar jogos. transporte=" + window.FutemaisAPI.transporte() + " | " + msg);
+    }).catch(function () {
       if (S.jogos === null) {
-        S.erro = "Não consegui buscar os jogos agora. (" + msg + ")";
+        S.erro = "Não consegui buscar os jogos agora.";
         $("erroTxt").textContent = S.erro;
         esconde($("telaCarregando"));
         mostra($("telaErro"));
