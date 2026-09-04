@@ -1,0 +1,19 @@
+{
+  "name": "jogos-do-vasco-tv",
+  "version": "2.1.0",
+  "description": "Os jogos do Vasco na TV falando: a voz conta o jogo de hoje, narra o que voce seleciona e abre a transmissao. Tudo embutido no modulo, sem servidor - feito pra quem nao le.",
+  "author": "Jogos do Vasco",
+  "license": "MIT",
+  "packageType": "app",
+  "appName": "Jogos do Vasco",
+  "appPath": "index.html",
+  "keys": ["MediaPlayPause", "MediaPlay", "MediaPause", "MediaStop"],
+  "keywords": [
+    "tizenbrew",
+    "tizen",
+    "vasco",
+    "futebol",
+    "tv",
+    "acessibilidade"
+  ]
+}
