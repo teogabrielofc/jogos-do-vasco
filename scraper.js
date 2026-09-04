@@ -28,8 +28,8 @@
   "use strict";
 
   // ─── Constantes (iguais à API original) ────────────────────────────────────
-  var BASE_APP = "https://apk.futemais.eu/app2/";
-  var BASE_IMGS = "https://apk.futemais.eu";
+  var BASE_APP = "https://futemais.link/app2/";
+  var BASE_IMGS = "https://futemais.link";
   var TIMEOUT_MS = 15000;
   var MATCHES_TTL = 5 * 60 * 1000; // 5 min
   var CHANNELS_TTL = 2 * 60 * 1000; // 2 min
