@@ -337,6 +337,10 @@
     }
     return httpGet(BASE_APP).then(function (html) {
       var jogos = parseJogos(html);
+      if (!jogos.length) {
+        console.warn("[scraper] parseJogos deu 0 resultados. html.length=" + (html ? html.length : 0) +
+          " | trecho: " + String(html).slice(0, 300));
+      }
       cacheJogos = { at: Date.now(), data: jogos };
       return jogos;
     });
