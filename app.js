@@ -717,6 +717,27 @@
     }
   }
 
+  // ═══════════ SELO DE ORIGEM (versão + fonte dos dados) ═══════════
+  // É o jeito de saber, NA PRÓPRIA TV, que ela está rodando esta versão e de
+  // onde vieram os dados. O cache do jsDelivr já deixou a TV em código antigo
+  // em silêncio (a TV mostrava "mesma coisa" depois do commit) — agora fica
+  // visível: se o selo não aparecer, a TV está no código velho → purge.
+  // NOTA: ao mudar a versão, mude também o package.json.
+  function infoFonte() {
+    var VER = "3.0.1";
+    var api = "", f = "";
+    try { api = window.FutemaisAPI.apiBase() || ""; } catch (e) {}
+    try { f = window.FutemaisAPI.fonte() || ""; } catch (e) {}
+    var txt;
+    if (api) {
+      var host = api.replace(/^https?:\/\//, "").split("/")[0].replace(/[^a-zA-Z0-9.\-:]/g, "");
+      txt = "v" + VER + " \u00B7 API: " + host + (f === "direto" ? " (caiu p/ direto)" : "");
+    } else {
+      txt = "v" + VER + " \u00B7 direto (API n\u00E3o configurada)";
+    }
+    return '<span class="info-fonte" style="margin-left:auto;font-size:18px;font-weight:700;color:#52525b;white-space:nowrap">' + txt + "</span>";
+  }
+
   function renderRodape(tela) {
     var html = "";
     if (tela === "home") {
@@ -724,6 +745,7 @@
     } else if (tela === "canais") {
       html = "<span><kbd>\u25B2\u25BC</kbd> Escolher</span><span><kbd>OK</kbd> Assistir</span><span><kbd>VOLTAR</kbd> Voltar</span>";
     }
+    html += infoFonte();
     $("rodape").innerHTML = html;
     $("rodape").classList.toggle("esconder", tela === "player");
   }
@@ -819,7 +841,9 @@
     }).catch(function () {
       if (S.jogos === null) {
         S.erro = "Não consegui buscar os jogos agora.";
-        $("erroTxt").textContent = S.erro;
+        // innerHTML de propósito: mostra também o selo de versão/fonte, pra
+        // saber na TV se a API foi configurada e se ela morreu antes do direto
+        $("erroTxt").innerHTML = S.erro + "<br>" + infoFonte();
         esconde($("telaCarregando"));
         mostra($("telaErro"));
         renderRodape("home");
