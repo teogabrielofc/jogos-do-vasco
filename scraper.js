@@ -1,12 +1,18 @@
 /**
  * ============================================================================
- * JOGOS DO VASCO — API EMBUTIDA (o "middleman" inteiro em JS padrao)
+ * JOGOS DO VASCO — scraper do módulo (v3: API na Vercel como caminho primário)
  * ============================================================================
- * Porta fiel do scraper (Python → TypeScript → JS padrao), rodando DENTRO da
- * propria TV. Nao precisa de servidor, PC ligado nem nada: o aparelho conversa
- * direto com o futemais e devolve jogos, canais e o link do video.
+ * A partir da v3 o módulo é SÓ UI: quem conversa com o futemais é a API
+ * publicada na Vercel (lib/futemais.js do projeto futemais-api), que devolve
+ * JSON prontinho. Vantagens pra TV:
+ *   - parsing de HTML fora da TV (o engine velho do Samsung não quebra mais)
+ *   - o site do futemais mudou de endereço/estrutura? Corrige-se na API e o
+ *     deploy é na hora — sem depender de cache de CDN na TV
+ *   - até os escudos vêm pela API (/api/img): a TV não fala com o futemais
  *
- * Fluxo (igualzinho ao da API original):
+ * Se API_BASE não estiver configurada (ou a API falhar), o módulo volta pro
+ * middleman EMBUTIDO aqui embaixo — a porta fiel do scraper original rodando
+ * dentro da própria TV:
  *   1. GET  apk.futemais.eu/app2/                     → lista de jogos (HTML)
  *   2. GET  links2.futemais.eu/canalapps.php?id=<ID>  → canais do jogo (HTML)
  *   3. GET  <player embed do canal>                   → PAGE_TOKEN + endpoint
@@ -33,6 +39,31 @@
   var TIMEOUT_MS = 15000;
   var MATCHES_TTL = 5 * 60 * 1000; // 5 min
   var CHANNELS_TTL = 2 * 60 * 1000; // 2 min
+
+  // ─── API EXTERNA (VERCEL) — caminho PRIMÁRIO ─────────────────────────────
+  // COLE AQUI a URL do teu deploy (sem barra no final). Exemplo:
+  //   var API_BASE = "https://vasco-api.vercel.app";
+  var API_BASE = "";
+  // Atalho pra testar sem editar código: abra o módulo com
+  //   ?api=https://teu-api.vercel.app
+  var apiBase = (function () {
+    try {
+      var m = String(location.search || "").match(/[?&]api=([^&]+)/);
+      if (m) return decodeURIComponent(m[1]).replace(/\/+$/, "");
+    } catch (e) { /* sem location disponível */ }
+    return String(API_BASE || "").replace(/\/+$/, "");
+  })();
+  var fonteAtual = apiBase ? "api" : "direto";
+
+  /** Chamada GET na API (JSON {ok:true,...}); erro qualquer → reject */
+  function apiGet(rota) {
+    return xhrPromessa("GET", apiBase + rota, null, false).then(function (txt) {
+      var d;
+      try { d = JSON.parse(txt); } catch (e) { throw new Error("api nao devolveu json"); }
+      if (!d || d.ok !== true) throw new Error("api: " + ((d && d.erro) || "resposta invalida"));
+      return d;
+    });
+  }
 
   // ─── Cache em memória (iguais à API original) ──────────────────────────────
   var cacheJogos = { at: 0, data: null };
@@ -301,14 +332,8 @@
   }
 
   // ─── Resolução do HLS (a URL do vídeo de verdade) ──────────────────────────
-  function resolverHls(canal, forcar) {
-    var agoraSec = Math.floor(Date.now() / 1000);
-
-    // Token ainda válido? (margem de 120s, igual à API)
-    if (!forcar && canal.hls_url && canal.expires_at > agoraSec + 120) {
-      return Promise.resolve(canal.hls_url);
-    }
-
+  /** Caminho direto (middleman embutido): embed → token → POST refresh */
+  function resolverHlsDireto(canal) {
     return httpGet(canal.embed_url)
       .then(function (playerHtml) {
         var mToken = playerHtml.match(/PAGE_TOKEN\s*=\s*["']([^"']+)["']/);
@@ -326,8 +351,33 @@
         canal.hls_url = data.url;
         var expire = Number(data.expire || 0);
         canal.expires_at = isFinite(expire) ? Math.floor(expire) : 0;
+        fonteAtual = "direto";
         return canal.hls_url;
       });
+  }
+
+  /** Resolvo pela API (primário) e, se falhar, pelo middleman embutido. */
+  function resolverHls(canal, forcar) {
+    var agoraSec = Math.floor(Date.now() / 1000);
+
+    // Token ainda válido? (margem de 120s, igual à API)
+    if (!forcar && canal.hls_url && canal.expires_at > agoraSec + 120) {
+      return Promise.resolve(canal.hls_url);
+    }
+
+    var viaApi = apiBase
+      ? apiGet("/api/stream?u=" + encodeURIComponent(canal.embed_url)).then(function (d) {
+          if (!d.url) throw new Error("api: sem url do video");
+          fonteAtual = "api";
+          canal.hls_url = d.url;
+          var expire = Number(d.expire || 0);
+          canal.expires_at = isFinite(expire) ? Math.floor(expire) : 0;
+          return canal.hls_url;
+        })
+      : Promise.reject(new Error("api nao configurada"));
+    return viaApi.catch(function () {
+      return resolverHlsDireto(canal);
+    });
   }
 
   // ─── API pública (a mesma cara das rotas /api/jogos do app) ────────────────
@@ -372,7 +422,17 @@
     if (!forcar && cacheJogos.data && Date.now() - cacheJogos.at < MATCHES_TTL) {
       return Promise.resolve(cacheJogos.data);
     }
-    return tentarBases(basesNaOrdem(), 0).then(function (jogos) {
+    // Primário: API na Vercel (JSON pronto). Plano B: middleman embutido.
+    var viaApi = apiBase
+      ? apiGet("/api/jogos").then(function (d) {
+          fonteAtual = "api";
+          return d.jogos || [];
+        })
+      : Promise.reject(new Error("api nao configurada"));
+    return viaApi.catch(function () {
+      fonteAtual = "direto";
+      return tentarBases(basesNaOrdem(), 0);
+    }).then(function (jogos) {
       if (jogos.length > 0) {
         cacheJogos = { at: Date.now(), data: jogos };
       } else {
@@ -397,41 +457,58 @@
     return "";
   }
 
+  /** Caminho direto do meio: baixa a página de canais e faz o parsing aqui */
+  function buscarCanaisDireto(url) {
+    return httpGet(url).then(function (html) {
+      return parseCanais(html);
+    });
+  }
+
   function canaisDoJogo(jogo, forcar) {
     var c = cacheCanais[jogo.match_id];
     if (!forcar && c && Date.now() - c.at < CHANNELS_TTL) {
       jogo.channels = c.data;
       return Promise.resolve(c.data);
     }
-    function buscar(url) {
-      return httpGet(url).then(function (html) {
-        return parseCanais(html);
-      });
-    }
-    var alt = hostAlternativoDeCanais(jogo.detail_url);
-    return buscar(jogo.detail_url).then(function (canais) {
-      if (canais.length > 0 || !alt) return canais;
-      // veio vazia: pode ser página errada do redirect regional — tenta o espelho
-      return buscar(alt).then(function (altCanais) {
-        return altCanais.length > 0 ? altCanais : canais;
-      });
-    }, function (erro1) {
-      if (!alt) throw erro1;
-      return buscar(alt); // erro de rede/HTTP no host principal → espelho
-    }).then(function (canais) {
+    function guardar(canais) {
       cacheCanais[jogo.match_id] = { at: Date.now(), data: canais };
       jogo.channels = canais;
       return canais;
-    });
+    }
+    // Primário: API na Vercel. Plano B: middleman embutido (com espelho).
+    var viaApi = apiBase
+      ? apiGet("/api/canais?id=" + encodeURIComponent(jogo.match_id)).then(function (d) {
+          fonteAtual = "api";
+          return d.canais || [];
+        })
+      : Promise.reject(new Error("api nao configurada"));
+    return viaApi.catch(function () {
+      fonteAtual = "direto";
+      var alt = hostAlternativoDeCanais(jogo.detail_url);
+      return buscarCanaisDireto(jogo.detail_url).then(function (canais) {
+        if (canais.length > 0 || !alt) return canais;
+        // veio vazia: pode ser página errada do redirect regional — tenta o espelho
+        return buscarCanaisDireto(alt).then(function (altCanais) {
+          return altCanais.length > 0 ? altCanais : canais;
+        });
+      }, function (erro1) {
+        if (!alt) throw erro1;
+        return buscarCanaisDireto(alt); // erro de rede/HTTP no principal → espelho
+      });
+    }).then(guardar);
   }
 
   global.FutemaisAPI = {
     listarJogos: listarJogos,
     canaisDoJogo: canaisDoJogo,
     resolverHls: resolverHls,
+    /** de onde veio o último dado: "api" (Vercel) ou "direto" (middleman embutido) */
+    fonte: function () { return fonteAtual; },
     /** pra depurar no console: "direto" (TV), "ponte" (PC via app) ou índice */
     transporte: function () { return transporte; },
     /** qual host da listagem funcionou por último (0 = apk, 1 = espelho) */
-    hostLista: function () { return hostLista; }
+    hostLista: function () { return hostLista; },
+    /** a URL da API que está em uso ("" = só middleman embutido) */
+    apiBase: function () { return apiBase; }
   };
 })(window);

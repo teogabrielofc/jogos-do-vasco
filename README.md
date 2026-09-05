@@ -1,26 +1,58 @@
-# JOGOS DO VASCO — Módulo TizenBrew (tudo embutido, sem servidor)
+# JOGOS DO VASCO — Módulo TizenBrew (v3: só a tela + API na Vercel)
 
 App de TV pro torcedor idoso que não lê: **a voz conta os jogos do Vasco,
 narra o que está selecionado e abre a transmissão** — setas + OK + VOLTAR,
 letras gigantes, preto e branco do Vasco.
 
-**Esta versão não precisa de servidor, PC ligado nem link de app.**
-A "API" é o próprio arquivo `scraper.js` rodando dentro da TV: ele busca os
-jogos, os canais e o link do vídeo direto na fonte (igual fazia o servidor),
-e o `hls.js` embutido toca o jogo. São 6 arquivos, nada mais.
+**Na v3 o módulo é só a tela: quem busca os jogos é a API publicada na
+Vercel** (grátis). Isso resolve os dois problemas que a TV estava tendo:
+
+1. O **engine JavaScript velho do Samsung** não precisa mais entender o HTML
+   do site — a API entrega JSON prontinho (e até os escudos vêm pela API);
+2. Quando o site do futemais muda de endereço/estrutura, **conserta-se na
+   API e vale na hora** — sem depender do cache do jsDelivr na TV.
+
+O módulo continua com o middleman embutido de sempre (scraper.js): se a API
+estiver fora do ar, ele tenta buscar direto da fonte por conta própria.
 
 ```
 package.json       → ficha do módulo pro TizenBrew
 index.html         → a tela (visual, foco, rodapé de dicas)
 app.js             → voz, narração, teclas do controle, player
-scraper.js         → a API embutida (busca jogos/canais/vídeo em JS puro)
+scraper.js         → liga na API da Vercel (e tem o plano B embutido)
 hls.light.min.js   → tocador de vídeo (hls.js, embutido)
 icon.png           → escudo do Vasco
 ```
 
 ---
 
-## 1. Instalar o TizenBrew na TV (uma vez só)
+## 0. Publicar a API na Vercel (uma vez só, ~5 min, grátis)
+
+A pasta `futemais-api` que veio junto tem TUDO. O passo a passo completo
+está no `futemais-api/README.md` — resumo:
+
+1. Cria conta em **vercel.com** usando o GitHub.
+2. Cria um repositório novo no GitHub (ex.: `vasco-api`) e sobe o conteúdo
+   da pasta `futemais-api` na raiz dele (`api/`, `lib/`, `package.json`,
+   `vercel.json`).
+3. Na Vercel: **Add New → Project → Import** o `vasco-api` → **Deploy**
+   (não mexe em nada). Vai vir uma URL tipo `https://vasco-api.vercel.app`.
+4. Testa no navegador: `https://vasco-api.vercel.app/api/ping` → tem que
+   aparecer `{"ok":true,...}`.
+
+## 1. Apontar o módulo pra tua API
+
+1. Abre o `scraper.js` do módulo (aqui ou no GitHub, botão do lápis ✏️).
+2. No topo, cola a tua URL:
+
+   ```js
+   var API_BASE = "https://vasco-api.vercel.app";
+   ```
+
+3. Pronto. Dá pra testar no PC sem editar nada abrindo o módulo com
+   `?api=https://vasco-api.vercel.app` no fim do link.
+
+## 2. Instalar o TizenBrew na TV (uma vez só)
 
 1. Na TV: `Configurações → Geral → Gerenciador de dispositivo externo →
    Gerenciador de conexão`… na prática, o que vale é **ativar o modo de
@@ -31,7 +63,7 @@ icon.png           → escudo do Vasco
    figuras) e instale o **TizenBrew Service** na TV pelo IP dela.
 3. Volte à TV: o app **TizenBrew** aparece na barra de aplicativos.
 
-## 2. Publicar o módulo no GitHub (uma vez só)
+## 3. Publicar o módulo no GitHub (uma vez só)
 
 O TizenBrew instala módulos "app" puxando de um repositório público.
 
@@ -43,7 +75,20 @@ O TizenBrew instala módulos "app" puxando de um repositório público.
    instalar nada no PC.
 3. Clique em *Commit changes*.
 
-## 3. Adicionar o módulo na TV
+### ⚠️ Atualizou o módulo no GitHub? Limpa o cache do jsDelivr!
+
+O TizenBrew baixa os arquivos do módulo pelo **jsDelivr** (um CDN), e esse
+CDN **guarda os arquivos velhos por horas** — foi por isso que atualizações
+não chegavam na TV (o famoso "mesma coisa"). Depois de TODO commit, abra no
+navegador (PC ou celular) o link de purge pra cada arquivo que mudou:
+
+```
+https://purge.jsdelivr.net/gh/SEU-USUARIO/SEU-REPO@main/scraper.js
+```
+
+Aparece algo como `... "status":"ok"` — aí é só reabrir o módulo na TV.
+
+## 4. Adicionar o módulo na TV
 
 1. Abra o **TizenBrew** na TV.
 2. Vá em **Gerenciador de módulos → Adicionar módulo do GitHub**
@@ -98,11 +143,19 @@ ele refaz a chamada pela **ponte `/api/pipe`** do app Jogos do Vasco.
 
 ## Problemas comuns
 
-- **"Nenhum jogo listado hoje" na TV, mas tem jogo no celular** → o site do
-  futemais redireciona o Brasil pro espelho `futemais.link`. A partir da
-  **v2.2.0** o módulo troca de host sozinho (apk → espelho) e também troca o
-  host dos canais. Se aparecer assim mesmo, aperte OK pra tentar de novo e
-  confira se a TV está com a versão 2.2.0 do módulo (publicada no GitHub).
+- **"Nenhum jogo listado hoje" na TV, mas tem jogo no celular** → três
+  suspeitos, nessa ordem:
+  1. **Cache do jsDelivr** — a TV recebendo o scraper velho depois de um
+     commit. Abre o link de purge (seção 3) e reabre o módulo.
+  2. **API não configurada / API fora do ar** — confere se o `API_BASE` no
+     topo do `scraper.js` está com a URL certa e se `/api/ping` responde no
+     navegador. Sem API, o módulo tenta direto na fonte — e aí o redirect
+     regional pro espelho `futemais.link` pode entregar a página de desafio
+     do Cloudflare (parece página vazia, dá "0 jogos" sem erro). É exatamente
+     por isso que a API na Vercel é o caminho recomendado.
+  3. **Dia sem jogo mesmo** — o Vasco às vezes descansa.
+- **Depois de mudar algo na API, preciso mexer no módulo?** → Não. Só mexe
+  no módulo se mudar a URL dela. Correções de parsing são commit na API.
 - **"Não consegui buscar os jogos agora"** → internet da TV caiu. OK tenta
   de novo. Se persistir, a fonte (site do futemais) pode estar fora do ar —
   espera um pouco.
