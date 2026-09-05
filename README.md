@@ -88,6 +88,22 @@ https://purge.jsdelivr.net/gh/SEU-USUARIO/SEU-REPO@main/scraper.js
 
 Aparece algo como `... "status":"ok"` — aí é só reabrir o módulo na TV.
 
+### Como saber se a TV pegou a versão nova? Olhe o selo no rodapé
+
+A partir da **v3.0.1** a tela principal mostra no cantinho direito do rodapé
+um selo cinza pequeno com a versão e a fonte dos dados:
+
+- `v3.0.1 · API: seu-projeto.vercel.app` → rodando o código novo e buscando
+  da tua API na Vercel (é assim que tem que estar).
+- `v3.0.1 · API: ... (caiu p/ direto)` → a API falhou e o módulo usou o
+  middleman embutido de reserva (na TV do Brasil esse caminho costuma dar
+  "nenhum jogo" — checa se a Vercel tá no ar).
+- `v3.0.1 · direto (API não configurada)` → o `API_BASE` do scraper.js no
+  teu repo está vazio — cola a URL da Vercel lá (seção 1).
+- **O selo não aparece de jeito nenhum?** A TV está rodando um código velho
+  em cache — faz o purge do jsDelivr acima e reabre o módulo.
+
+
 ## 4. Adicionar o módulo na TV
 
 1. Abra o **TizenBrew** na TV.
