@@ -43,7 +43,7 @@
   // ─── API EXTERNA (VERCEL) — caminho PRIMÁRIO ─────────────────────────────
   // COLE AQUI a URL do teu deploy (sem barra no final). Exemplo:
   //   var API_BASE = "https://vasco-api.vercel.app";
-  var API_BASE = "";
+  var API_BASE = "https://vasco-api-kappa.vercel.app";
   // Atalho pra testar sem editar código: abra o módulo com
   //   ?api=https://teu-api.vercel.app
   var apiBase = (function () {
